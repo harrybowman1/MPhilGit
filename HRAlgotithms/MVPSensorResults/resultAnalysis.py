@@ -15,13 +15,19 @@ Approach:
 
 #Data Loading
 # data = pd.read_csv("20_4_Test1/test3.csv", names = ['time','red', 'IR', 'HR', 'SPo2'])
-data = pd.read_csv("../../Datasets/Custom/9_05_fingertip.csv", names = ['time', 'red', 'IR'])
+data = pd.read_csv("../../Datasets/Custom/09_11_FingertipHighPower50Hz.csv", names = ['time', 'red', 'IR'])
+
 if 0:
 	data['timeS'] = data['time']/1000
 	data['HR'] = [x if x > 0 else 0 for x in data['HR']]
-else:
+elif 0:
 	a = [datetime.strptime(i, "%Y-%m-%d %H:%M:%S.%f") for i in data['time']]
 	data["timeS"] = [(i-a[0]).seconds*1000000 + (i-a[0]).microseconds for i in a]
+else:
+	dataFixed = data.reset_index()
+	a = [datetime.strptime(i, "%Y-%m-%d %H:%M:%S.%f") for i in dataFixed['index']]
+	dataFixed["timeS"] = [(i-a[0]).seconds*1000000 + (i-a[0]).microseconds for i in a]
+	data = dataFixed
 
 
 print(data.shape)

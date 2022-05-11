@@ -15,7 +15,7 @@ Approach:
 
 #Data Loading
 # data = pd.read_csv("20_4_Test1/test3.csv", names = ['time','red', 'IR', 'HR', 'SPo2'])
-data = pd.read_csv("../../Datasets/Custom/foreheadFullPower50Hz.csv", names = ['red'])
+data = pd.read_csv("../../Datasets/Custom/09_11_FingertipHighPower50Hz.csv", names = ['red'])
 
 plt.figure()
 plt.plot(data['red'])
