@@ -14,42 +14,36 @@ Approach:
 """
 
 #Data Loading
+path = "../../Datasets/Custom/09_12_Wrist_noMovement.csv"
+dataType = "timeSingle"#"single""multi"ect
 # data = pd.read_csv("20_4_Test1/test3.csv", names = ['time','red', 'IR', 'HR', 'SPo2'])
-data = pd.read_csv("../../Datasets/Custom/09_11_FingertipHighPower50Hz.csv", names = ['time', 'red', 'IR'])
-
+data = pd.read_csv(path, names = ['time', 'red', 'IR'])
+dataOrig = data.copy()
 if 0:
 	data['timeS'] = data['time']/1000
 	data['HR'] = [x if x > 0 else 0 for x in data['HR']]
 elif 0:
 	a = [datetime.strptime(i, "%Y-%m-%d %H:%M:%S.%f") for i in data['time']]
-	data["timeS"] = [(i-a[0]).seconds*1000000 + (i-a[0]).microseconds for i in a]
-else:
+	data["timeS"] = [(((i-a[0]).seconds*1000000 + (i-a[0]).microseconds)/1e6) for i in a]
+elif dataType == "timeSingle":
 	dataFixed = data.reset_index()
-	a = [datetime.strptime(i, "%Y-%m-%d %H:%M:%S.%f") for i in dataFixed['index']]
-	dataFixed["timeS"] = [(i-a[0]).seconds*1000000 + (i-a[0]).microseconds for i in a]
+	a = [datetime.strptime(i, "%Y-%m-%d %H:%M:%S.%f") for i in dataFixed['time']]
+	dataFixed["timeS"] = [((i-a[0]).seconds*1000000 + (i-a[0]).microseconds)/1e6 for i in a]
 	data = dataFixed
-
+#Should result data as a df with cols timeS and red
 
 print(data.shape)
 
-def plotSpecially(title, rangeLow, rangeHigh):
-	fig,ax = plt.subplots()
-	dataFingerSoft = data[rangeLow:rangeHigh]
-	ax.plot( dataFingerSoft['timeS'], dataFingerSoft['red'])
-	ax.set_ylabel("Red light reflected intensity")
-	# ax2 = ax.twinx()
-	# ax2.plot(dataFingerSoft['timeS'], dataFingerSoft['HR'])
-	# ax2.set_ylabel("HR computed")
-	# pltstr = "Finger Soft: " + str(dataFingerSoft['HR'].mean())
-	plt.title(title)
-	plt.savefig(title)
-
+#Find Sample time
+a = data['timeS']
+sampleTime = np.array([a[i+1]-a[i] for i in range(len(a)-1)]).mean()
 
 #Variables
 plot = False
 windowTime = 50
-sampleTime = 0.12
+# sampleTime = 0.12
 sampleFreq = 1/sampleTime
+# sampleFreq = 11
 minHr = 40 #bpm
 maxHr = 200 #bpm
 minHrFreq = minHr/60
@@ -57,10 +51,10 @@ maxHrFreq = maxHr/60
 minHrTime = 1/minHrFreq
 maxHrTime = 1/maxHrFreq
 
-smoothSize = 9
+smoothSize = 25
 minHrSamples = int(math.floor(minHrTime/sampleTime))+1
 maxHrSamples = int(math.floor(maxHrTime/sampleTime))+1
-maxHrSamples = 10
+# maxHrSamples = 
 #To ensure we get both peak and trough from hr, need to make sure window is minHR time * 2
 windowSamples= minHrSamples*2
 # windowSamples = 100
@@ -100,7 +94,7 @@ def faultyDataDetector(signal, windowSamples):
 				print('stdCurr is less than stdTracker')
 				stdResult = np.append(stdResult, stdCurr)
 				validWindow = 1
-				stdTracker = stdResult.std() *10 #Get the new threshold - 3 times the last 3 previous good std
+				stdTracker = stdResult.std() *20 #Get the new threshold - 3 times the last 3 previous good std
 			else:
 				validWindow = 0
 		else:
@@ -139,12 +133,12 @@ def peakFinder(signal, minDist):
 	length = len(signal)
 	meanHeight = np.mean(signal)
 	stdHeight = np.std(signal)
-	threshold = meanHeight+1*stdHeight
+	threshold = meanHeight+0.8*stdHeight
 	peaks = np.array([])
 	#Find the peaks 
 	for i in range(1,length-1):
 		#Middle of three points is the highest
-		if signal[i] > signal[i-1] and signal[i] > signal[i+1]:
+		if signal[i] > signal[i-1] and signal[i] > signal[i+1] and signal[i+1] > signal[i+5] and signal[i-1] > signal[i-5]:
 			#Above a threshold of mean+1.5*std 
 			if signal[i]>threshold:
 				peaks = np.append(peaks, i)
@@ -174,8 +168,21 @@ def peakFinder(signal, minDist):
 	print("peaks after too close = ", peaks)
 	return peaks.astype(int), threshold, peaksAll.astype(int)
 
-	
-	
+def bpmCalc(peaksInd, sampleFreq):
+	#for the peaks found, find the time between peaks
+	p2pList = np.array([])
+	hrList = np.array([])
+	for i in range(len(peaksInd)-1):
+		p2p = peaksInd[i+1]-peaksInd[i]
+		p2pList = np.append(p2pList, p2p)
+		print(p2p)
+		timeInd = 1/sampleFreq
+		Hr = 60/(p2p*timeInd) 
+		print("HR = ",Hr)
+		hrList = np.append(hrList, Hr)
+
+	hrEst = hrList[2:-2].mean()
+	return hrEst
 
 #Do for red and ir
 #for each window of data: center around 0, normalise, filter/smooth and plot at each step
@@ -198,30 +205,38 @@ totalData, endNum = windowNormaliser(fingerData['red'], windowSamples)
 smoothed = movingAverage(totalData, smoothSize) #len = 598 - smoothsize
 #Find Peaks - should be done using moving average filter for the windows - not the entire signal
 peaksInd, threshold, peaksAll = peakFinder(smoothed,maxHrSamples)
-
+#Calc av hr
+avHr = bpmCalc(peaksInd, sampleFreq)
 
 #Plot the resulting normalised then smoothedData
-fig, (ax1, ax2, ax3) = plt.subplots(3,1)
+fig, (ax0, ax1, ax2, ax3) = plt.subplots(4,1)
 smoothSizeHalf = math.ceil(smoothSize/2)
-timeTotal = fingerData['timeS'][:endNum] / 1e6
+timeTotal = fingerData['timeS'][:endNum] 
 timeSmoothed = timeTotal[math.floor(smoothSize/2):-math.ceil(smoothSize/2)].values
 peaksTime = timeSmoothed[peaksInd]
-peaksAllTime = timeSmoothed[peaksAll]
-#Plot windowed data
+
 ax2.plot(timeTotal , totalData, label = "Windowed")
 ax2.set_title('windowed data')
 #Plot windowed and smoothed data
 ax3.plot(timeSmoothed, smoothed, label = "Windowed and Smoothed")
 #plot peaks found
-ax3.scatter(peaksTime, smoothed[peaksInd]+1, color = 'r')
-ax3.scatter(peaksAllTime, smoothed[peaksAll],color = 'g')
+ax3.scatter(peaksTime, smoothed[peaksInd], color = 'r')
+# ax3.scatter(peaksAllTime, smoothed[peaksAll],color = 'g')
 ax3.plot(timeSmoothed, [threshold for i in range(len(timeSmoothed))])
-titleStr = 'Red data : Window='+str(windowSamples) + "SmoothSize = " + str(smoothSize)
+titleStr = 'Red data : HR est = ' + str(int(avHr))
 ax3.set_title(titleStr)
 ax3.legend()
 ax1.plot(fingerData['red'], label = 'red')
-ax1.set_title('raw data')
+ax1.set_title('raw data minus non-valid')
+ax0.plot(dataOrig['red'])
+ax0.set_title('raw data')
 plt.savefig(titleStr)
+
+#Separate debugging plot
+plt.figure()
+plt.plot(timeTotal , totalData, label = "Windowed")
+plt.plot(timeSmoothed, smoothed, label = "Windowed and Smoothed")
+plt.scatter(peaksTime, smoothed[peaksInd], color = 'r')
 
 plt.show()
 
@@ -232,6 +247,28 @@ plt.show()
 # plt.legend()
 # plt.show()
 
+
+timeDiff = np.array([])
+timeList = data['timeS'].values
+for i in range(1,len(timeList)):
+	timeDiff = np.append(timeDiff, timeList[i]-timeList[i-1])
+# print(timeDiff.unique())fingerData
+
+
+"""Archived
+def plotSpecially(title, rangeLow, rangeHigh):
+	fig,ax = plt.subplots()
+	dataFingerSoft = data[rangeLow:rangeHigh]
+	ax.plot( dataFingerSoft['timeS'], dataFingerSoft['red'])
+	ax.set_ylabel("Red light reflected intensity")
+	# ax2 = ax.twinx()
+	# ax2.plot(dataFingerSoft['timeS'], dataFingerSoft['HR'])
+	# ax2.set_ylabel("HR computed")
+	# pltstr = "Finger Soft: " + str(dataFingerSoft['HR'].mean())
+	plt.title(title)
+	plt.savefig(title)
+
+
 if plot:
 
 	plotSpecially("Finger Soft", 100, 300)
@@ -240,9 +277,4 @@ if plot:
 	plotSpecially("INside wrist", 763, 930)
 	plt.show()
 
-
-timeDiff = np.array([])
-timeList = data['timeS'].values
-for i in range(1,len(timeList)):
-	timeDiff = np.append(timeDiff, timeList[i]-timeList[i-1])
-# print(timeDiff.unique())fingerData
+"""
