@@ -14,7 +14,8 @@ Approach:
 """
 
 #Data Loading
-path = "../../Datasets/Custom/09_12_Wrist_noMovement.csv"
+# path = "../../Datasets/Custom/Fingertip/53bpm.csv"
+path = "../../Datasets/Custom/BackOfWrist/60down53bpm.csv"
 dataType = "timeSingle"#"single""multi"ect
 # data = pd.read_csv("20_4_Test1/test3.csv", names = ['time','red', 'IR', 'HR', 'SPo2'])
 data = pd.read_csv(path, names = ['time', 'red', 'IR'])
@@ -41,7 +42,7 @@ sampleTime = np.array([a[i+1]-a[i] for i in range(len(a)-1)]).mean()
 #Variables
 plot = False
 windowTime = 50
-# sampleTime = 0.12
+sampleTime = 0.02
 sampleFreq = 1/sampleTime
 # sampleFreq = 11
 minHr = 40 #bpm
@@ -51,13 +52,13 @@ maxHrFreq = maxHr/60
 minHrTime = 1/minHrFreq
 maxHrTime = 1/maxHrFreq
 
-smoothSize = 25
+smoothSize = 9
 minHrSamples = int(math.floor(minHrTime/sampleTime))+1
 maxHrSamples = int(math.floor(maxHrTime/sampleTime))+1
 # maxHrSamples = 
 #To ensure we get both peak and trough from hr, need to make sure window is minHR time * 2
 windowSamples= minHrSamples*2
-# windowSamples = 100
+windowSamples = 50
 
 
 def movingAverage(signal, nPoints):
@@ -136,7 +137,7 @@ def peakFinder(signal, minDist):
 	threshold = meanHeight+0.8*stdHeight
 	peaks = np.array([])
 	#Find the peaks 
-	for i in range(1,length-1):
+	for i in range(1,length-5):
 		#Middle of three points is the highest
 		if signal[i] > signal[i-1] and signal[i] > signal[i+1] and signal[i+1] > signal[i+5] and signal[i-1] > signal[i-5]:
 			#Above a threshold of mean+1.5*std 
@@ -209,14 +210,21 @@ peaksInd, threshold, peaksAll = peakFinder(smoothed,maxHrSamples)
 avHr = bpmCalc(peaksInd, sampleFreq)
 
 #Plot the resulting normalised then smoothedData
-fig, (ax0, ax1, ax2, ax3) = plt.subplots(4,1)
+fig, (ax0, ax1, ax2, ax3) = plt.subplots(4,1, sharex = True)
 smoothSizeHalf = math.ceil(smoothSize/2)
 timeTotal = fingerData['timeS'][:endNum] 
 timeSmoothed = timeTotal[math.floor(smoothSize/2):-math.ceil(smoothSize/2)].values
 peaksTime = timeSmoothed[peaksInd]
-
-ax2.plot(timeTotal , totalData, label = "Windowed")
+ax0.plot(dataOrig['red'])
+ax0.set_title('raw data')
+ax1.plot(fingerData['red'], label = 'red')
+ax1.set_title('raw data minus non-valid')
+ax2.plot(totalData, label = "Windowed")
 ax2.set_title('windowed data')
+ax3.plot(smoothed)
+ax3.set_title("Smoothed")
+
+fig,ax3 = plt.subplots(1,1)
 #Plot windowed and smoothed data
 ax3.plot(timeSmoothed, smoothed, label = "Windowed and Smoothed")
 #plot peaks found
@@ -226,10 +234,7 @@ ax3.plot(timeSmoothed, [threshold for i in range(len(timeSmoothed))])
 titleStr = 'Red data : HR est = ' + str(int(avHr))
 ax3.set_title(titleStr)
 ax3.legend()
-ax1.plot(fingerData['red'], label = 'red')
-ax1.set_title('raw data minus non-valid')
-ax0.plot(dataOrig['red'])
-ax0.set_title('raw data')
+
 plt.savefig(titleStr)
 
 #Separate debugging plot
